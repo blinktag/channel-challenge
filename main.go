@@ -11,7 +11,7 @@ import (
 type Station struct {
 	Pumps    chan Pump
 	Vehicles chan Vehicle
-	Timeout  <-chan time.Time
+	Timeout  <-chan struct{}
 }
 
 type Vehicle struct {
@@ -54,6 +54,9 @@ func (c *Vehicle) Fillup() {
 // incrememet the number of fillups on the car and pump, and then return
 // the car and pump to their respective channels
 func (s *Station) FillNext(p Pump) {
+	defer wg.Done()
+	defer func() { s.Pumps <- p }()
+
 	select {
 	case <-s.Timeout:
 		return
@@ -62,8 +65,6 @@ func (s *Station) FillNext(p Pump) {
 		p.Fillups++
 		//fmt.Printf("Filling car %v\n", current.Id)
 		s.Vehicles <- current
-		s.Pumps <- p
-		wg.Done()
 		return
 
 	}
@@ -105,7 +106,8 @@ func NewStation(maxCars int, maxPumps int) *Station {
 	vehicles := make(chan Vehicle, maxCars)
 
 	// Timeout station execution loop after 30 seconds
-	timeout := time.After(time.Second * 30)
+	timeout := make(chan struct{})
+	time.AfterFunc(time.Second*30, func() { close(timeout) })
 
 	// Load up buffered channels
 	for i := 0; i < maxPumps; i++ {
